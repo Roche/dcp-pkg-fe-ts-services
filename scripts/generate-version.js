@@ -1,75 +1,64 @@
 const { version } = require('../package.json');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
-
-console.log(`Generating version file for version: ${version}\n`);
-
-function loadExistingCompatibility(versionFilePath) {
-    if (!fs.existsSync(versionFilePath)) {
-        return [];
-    }
-
-    const existingContent = fs.readFileSync(versionFilePath, 'utf-8');
-    const match = existingContent.match(/export const COMPATIBILITY = ([\s\S]*?);/);
-    if (!match) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(match[1]);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
+const { execFileSync } = require('child_process');
 
 function parseCompatibilityResults(output) {
     const marker = 'COMPATIBILITY_RESULTS_JSON=';
     const line = output
         .split(/\r?\n/)
-        .map(l => l.trim())
-        .find(l => l.startsWith(marker));
+        .map(value => value.trim())
+        .find(value => value.startsWith(marker));
 
     if (!line) {
-        return null;
+        throw new Error('Compatibility checker did not emit results.');
     }
 
-    return JSON.parse(line.slice(marker.length));
+    const results = JSON.parse(line.slice(marker.length));
+    if (!results || typeof results !== 'object' || Array.isArray(results)
+        || !Object.keys(results).length
+        || Object.values(results).some(value => !['compatible', 'incompatible', 'untested'].includes(value))) {
+        throw new Error('Compatibility checker returned invalid results.');
+    }
+    if (results[version] !== 'compatible') {
+        throw new Error('Current version must pass its tests before generating compatibility metadata.');
+    }
+    return results;
 }
 
-const versionFile = path.resolve(__dirname, '../src/version.ts');
-const previousCompatibility = loadExistingCompatibility(versionFile);
-
-// Run compatibility check and capture output
-let allResults = null;
-let compatibilityKeys = previousCompatibility;
-try {
-    console.log(`Running compatibility checks...`);
-    const output = execSync('node scripts/check-compatibility.js', { 
+function main() {
+    console.log(`Generating version file for version: ${version}\n`);
+    const checker = process.env.COMPATIBILITY_SCRIPT
+        ? path.resolve(__dirname, '..', process.env.COMPATIBILITY_SCRIPT)
+        : path.join(__dirname, 'check-compatibility.js');
+    const output = execFileSync(process.execPath, [checker], {
+        cwd: path.resolve(__dirname, '..'),
         encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'inherit'],
+        maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env }
     });
-    const parsed = parseCompatibilityResults(output);
-    if (parsed && typeof parsed === 'object') {
-        allResults = parsed;
-        console.log(`Compatibility check results:\n${JSON.stringify(allResults, null, 2)}`);
-        // Only keep compatible versions for writing.
-        compatibilityKeys = Object.keys(allResults)
-            .filter(key => allResults[key] === 'compatible')
-            .map(key => key.startsWith('v') ? key.slice(1) : key);
-    } else {
-        console.warn('No compatibility JSON marker found in output. Keeping previous compatibility values.');
-    }
-} catch (e) {
-    console.error('Error during compatibility check:', e);
-    console.warn('Keeping previous compatibility values due to compatibility check failure.');
+    console.log(output);
+    const results = parseCompatibilityResults(output);
+    const compatibleVersions = Object.keys(results)
+        .filter(key => results[key] === 'compatible')
+        .map(key => key.startsWith('v') ? key.slice(1) : key);
+
+    const versionFile = path.resolve(__dirname, '../src/version.ts');
+    const content = `export const VERSION = '${version}';
+export const COMPATIBILITY = ${JSON.stringify(compatibleVersions, null, 2)};
+`;
+    fs.writeFileSync(versionFile, content);
+    console.log(`Wrote version and compatibility info to ${versionFile}`);
 }
 
-// Write version and compatibility info to version.ts
-const content = `export const VERSION = '${version}';
-export const COMPATIBILITY = ${JSON.stringify(compatibilityKeys, null, 2)};
-`;
+if (require.main === module) {
+    try {
+        main();
+    } catch (error) {
+        console.error('Version generation failed:', error);
+        process.exitCode = 1;
+    }
+}
 
-fs.writeFileSync(versionFile, content);
-console.log(`Wrote version and compatibility info to ${versionFile}`);
+module.exports = { main, parseCompatibilityResults };

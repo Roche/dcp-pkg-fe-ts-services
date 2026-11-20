@@ -1,7 +1,6 @@
-export const VERSION = 'x.x.x';
+export const VERSION = '0.0.0-local';
 export const COMPATIBILITY = [
-  "x.x.x",
-  "1.1.0",
-  "1.0.5",
-  "1.0.4"
+  "0.0.0-local",
+  "1.2.0",
+  "1.1.5"
 ];

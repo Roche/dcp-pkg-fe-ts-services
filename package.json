@@ -1,12 +1,24 @@
 {
   "name": "@open-dcp/services",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "engines": {
     "node": ">=18.8.0"
   },
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "scripts/compatibility.js",
+    "scripts/check-compatibility.js",
+    "scripts/generate-version.js",
+    "scripts/__tests__/compatibility.test.js",
+    "scripts/__tests__/helpers.js",
+    "jest.config.js",
+    "tsconfig.json",
+    "docs"
+  ],
   "scripts": {
     "start": "npm run dev",
     "dev": "concurrently \"tsc --watch\" \"tsc-alias --watch\"",
@@ -14,6 +26,7 @@
     "build": "tsc && tsc-alias",
     "build:local": "tsc && tsc-alias",
     "test": "jest",
+    "test:scripts": "node --test scripts/__tests__/*.test.js",
     "compatibility": "node scripts/check-compatibility.js"
   },
   "keywords": [],
